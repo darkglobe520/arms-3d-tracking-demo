@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treno FL205 Live — Vista 3D</title>
+
+<!-- Tell Cesium where to find its static assets (Workers, Assets, ThirdParty)
+     BEFORE loading Cesium.js itself — it reads this at load time to resolve
+     the Web Workers it spins up for terrain/imagery decoding. -->
+<script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.118/Build/Cesium/';</script>
+
+<!-- Cesium.js via jsDelivr (mirrors the full npm package incl. static Assets/Widgets/Workers) -->
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.118/Build/Cesium/Cesium.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/cesium@1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+<style>
+  html, body, #cesiumContainer {
+    width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+  }
+  #hud {
+    position: absolute; top: 12px; left: 12px; z-index: 10;
+    background: rgba(13,21,18,0.82); color: #e7ece9;
+    border: 1px solid #2a3a34; border-radius: 10px;
+    padding: 14px 16px; min-width: 240px;
+    backdrop-filter: blur(4px);
+  }
+  #hud .eyebrow {
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    color: #e0993a; font-weight: 600; margin-bottom: 4px;
+  }
+  #hud h1 { font-size: 15px; margin: 0 0 10px; font-weight: 650; }
+  #hud .row { display:flex; justify-content:space-between; gap:16px; font-size:12.5px; padding:3px 0; }
+  #hud .row .lab { color:#8ba39a; }
+  #hud .row .val { font-family: 'SF Mono', Consolas, monospace; font-variant-numeric: tabular-nums; font-weight:600; }
+  #controls {
+    position: absolute; bottom: 12px; left: 12px; z-index: 10;
+    background: rgba(13,21,18,0.82); color: #e7ece9;
+    border: 1px solid #2a3a34; border-radius: 10px;
+    padding: 10px 14px; display:flex; align-items:center; gap:10px;
+    font-size: 12.5px;
+  }
+  #controls input[type=range]{ width:140px; accent-color:#e0993a; }
+  #controls button {
+    background:#e0993a; border:none; color:#1a1002; font-weight:700;
+    border-radius:6px; padding:6px 10px; cursor:pointer; font-size:12.5px;
+  }
+  #loading {
+    position:absolute; inset:0; background:#0d1512; color:#8ba39a;
+    display:flex; align-items:center; justify-content:center; z-index:20;
+    font-family:-apple-system,sans-serif; font-size:14px;
+  }
+</style>
+</head>
+<body>
+<div id="loading">Caricamento terreno e imagery…</div>
+<div id="cesiumContainer"></div>
+
+<div id="hud">
+  <div class="eyebrow">ARMS · CTC Evoluto · Vista 3D</div>
+  <h1>Treno FL205 — Reggio Emilia ↔ Ciano d'Enza</h1>
+  <div class="row"><span class="lab">Progressiva</span><span class="val" id="kmVal">0,000 km</span></div>
+  <div class="row"><span class="lab">Velocità sim.</span><span class="val" id="spVal">60 km/h</span></div>
+  <div class="row"><span class="lab">Prossima fermata</span><span class="val" id="nextVal">—</span></div>
+</div>
+
+<div id="controls">
+  <button id="followBtn">Segui treno</button>
+  <label>Velocità</label>
+  <input type="range" id="speedSlider" min="10" max="250" value="60" step="10">
+  <span id="speedLabel">60 km/h</span>
+</div>
+
+<script>
+// ============ DATA (embedded, generated from OSM-derived FL205 track) ============
+const DATA = {"track":[[10.6433,44.69767],[10.64216,44.69803],[10.64149,44.69827],[10.64111,44.69845],[10.64078,44.69867],[10.63995,44.69933],[10.63975,44.69948],[10.63975,44.69948],[10.6393,44.69984],[10.63881,44.70027],[10.63842,44.70059],[10.63782,44.70111],[10.63782,44.70111],[10.63757,44.70132],[10.63713,44.70179],[10.63655,44.70252],[10.63574,44.70354],[10.63535,44.70406],[10.63535,44.70406],[10.6352,44.70424],[10.6352,44.70424],[10.63412,44.7056],[10.63395,44.70581],[10.63395,44.70581],[10.63379,44.70596],[10.63373,44.70602],[10.63373,44.70602],[10.63362,44.70611],[10.63342,44.70626],[10.63319,44.70641],[10.63293,44.70654],[10.63265,44.70666],[10.63233,44.70678],[10.63198,44.70687],[10.6316,44.70694],[10.63129,44.70698],[10.63098,44.707],[10.63067,44.707],[10.6305,44.70699],[10.63046,44.70699],[10.63031,44.70698],[10.63009,44.70695],[10.62987,44.70692],[10.62956,44.70685],[10.62911,44.70675],[10.6291,44.70674],[10.62851,44.7066],[10.62703,44.70625],[10.62608,44.70602],[10.62604,44.70601],[10.626,44.706],[10.62594,44.70599],[10.62587,44.70597],[10.62558,44.70591],[10.62521,44.70579],[10.62436,44.70558],[10.62388,44.70547],[10.62226,44.7051],[10.62177,44.70501],[10.62155,44.70496],[10.62152,44.70495],[10.62118,44.70488],[10.62071,44.70481],[10.62023,44.70477],[10.61985,44.70478],[10.6198,44.70479],[10.61972,44.70479],[10.61972,44.70479],[10.6193,44.70482],[10.6193,44.70482],[10.61922,44.70482],[10.61755,44.70492],[10.61647,44.70498],[10.6159,44.70498],[10.61562,44.70496],[10.61535,44.70493],[10.61522,44.70491],[10.61507,44.70489],[10.61475,44.70482],[10.6146,44.70479],[10.61441,44.70474],[10.61411,44.70465],[10.6139,44.70458],[10.61383,44.70455],[10.61376,44.70453],[10.61366,44.70449],[10.61334,44.70436],[10.61007,44.70309],[10.60898,44.70272],[10.60804,44.70247],[10.60673,44.70218],[10.60379,44.70159],[10.60379,44.70159],[10.60362,44.70156],[10.60362,44.70156],[10.59999,44.70085],[10.59999,44.70085],[10.59978,44.7008],[10.59978,44.7008],[10.59534,44.69989],[10.59515,44.69985],[10.59286,44.6993],[10.59286,44.6993],[10.59277,44.69928],[10.59277,44.69928],[10.59018,44.69866],[10.58884,44.69836],[10.58877,44.69834],[10.58877,44.69834],[10.5885,44.69828],[10.5885,44.69828],[10.58745,44.69803],[10.587,44.69797],[10.58638,44.69793],[10.58237,44.69781],[10.58164,44.69778],[10.58164,44.69778],[10.58156,44.69777],[10.58156,44.69777],[10.57756,44.6976],[10.57635,44.69747],[10.57516,44.69727],[10.57129,44.69634],[10.56934,44.69588],[10.56632,44.69515],[10.56485,44.6948],[10.56485,44.6948],[10.56475,44.69478],[10.56475,44.69478],[10.56209,44.69416],[10.56063,44.6938],[10.56047,44.69378],[10.56002,44.6937],[10.55978,44.69368],[10.55978,44.69368],[10.55963,44.69367],[10.55963,44.69367],[10.55944,44.69365],[10.55865,44.69363],[10.55656,44.6937],[10.55364,44.69378],[10.55346,44.69379],[10.5534,44.69379],[10.5534,44.69379],[10.55322,44.6938],[10.55322,44.6938],[10.55161,44.69385],[10.54919,44.69393],[10.54862,44.69399],[10.54834,44.69403],[10.54804,44.69408],[10.54771,44.69415],[10.54548,44.69465],[10.54358,44.69511],[10.54358,44.69511],[10.54336,44.69516],[10.54336,44.69516],[10.54086,44.6957],[10.53929,44.69606],[10.53605,44.69682],[10.53605,44.69682],[10.53591,44.69685],[10.53591,44.69685],[10.53303,44.69752],[10.532,44.69776],[10.52879,44.69848],[10.52774,44.69872],[10.52774,44.69872],[10.52755,44.69877],[10.52755,44.69877],[10.52709,44.69887],[10.52657,44.69898],[10.52657,44.69898],[10.52638,44.69903],[10.52638,44.69903],[10.525,44.69934],[10.52389,44.69959],[10.52317,44.69973],[10.52309,44.69974],[10.523,44.69975],[10.52254,44.69978],[10.52222,44.69979],[10.52151,44.69974],[10.52121,44.69969],[10.52015,44.69948],[10.51909,44.69927],[10.51765,44.69897],[10.5147,44.69837],[10.51227,44.69788],[10.51042,44.6975],[10.51004,44.69742],[10.51003,44.69741],[10.51003,44.69741],[10.50992,44.69739],[10.50992,44.69739],[10.50962,44.69732],[10.50884,44.69714],[10.5073,44.69677],[10.50509,44.69622],[10.50115,44.69525],[10.50029,44.69504],[10.49995,44.69495],[10.49971,44.69489],[10.49934,44.6948],[10.49904,44.69473],[10.49904,44.69473],[10.49892,44.6947],[10.49881,44.69467],[10.49879,44.69466],[10.49879,44.69466],[10.49848,44.69458],[10.49826,44.69451],[10.49799,44.69443],[10.49772,44.69432],[10.49739,44.69419],[10.49708,44.69404],[10.49691,44.69396],[10.49674,44.69386],[10.4964,44.69365],[10.49613,44.69345],[10.49586,44.69323],[10.49509,44.69248],[10.4948,44.69221],[10.49459,44.692],[10.49433,44.69174],[10.49385,44.69127],[10.49366,44.69108],[10.49321,44.69064],[10.49272,44.69015],[10.49226,44.6897],[10.49198,44.68943],[10.49186,44.6893],[10.49106,44.68852],[10.49072,44.68817],[10.49043,44.68789],[10.48882,44.68627],[10.48872,44.68618],[10.48866,44.68611],[10.48856,44.68599],[10.48849,44.6859],[10.48839,44.68577],[10.48821,44.68548],[10.48755,44.68447],[10.48683,44.68336],[10.48642,44.68274],[10.48569,44.68163],[10.48485,44.68074],[10.48416,44.67997],[10.48259,44.67824],[10.48099,44.67646],[10.48091,44.67637],[10.47952,44.67471],[10.47921,44.67434],[10.47739,44.6721],[10.47588,44.67034],[10.47559,44.66997],[10.47498,44.66939],[10.47383,44.66832],[10.47383,44.66832],[10.47374,44.66824],[10.47374,44.66824],[10.47272,44.66729],[10.47034,44.66516],[10.47029,44.6651],[10.4697,44.66457],[10.46919,44.66412],[10.4689,44.66385],[10.46784,44.66291],[10.46784,44.66291],[10.46779,44.66286],[10.46779,44.66286],[10.46734,44.66245],[10.46635,44.66152],[10.46604,44.6612],[10.4657,44.6608],[10.46558,44.66064],[10.46543,44.66046],[10.46509,44.65999],[10.46475,44.65947],[10.46316,44.65708],[10.46298,44.65681],[10.46115,44.65408],[10.46096,44.65378],[10.46088,44.65364],[10.46079,44.65349],[10.46073,44.65335],[10.46068,44.65321],[10.46063,44.65307],[10.46059,44.65293],[10.46057,44.65287],[10.46056,44.6528],[10.46054,44.65265],[10.46053,44.65256],[10.46053,44.65251],[10.46051,44.65222],[10.46047,44.65165],[10.46038,44.65048],[10.46031,44.64967],[10.46027,44.64941],[10.46016,44.64912],[10.46003,44.64884],[10.45981,44.64856],[10.45971,44.64846],[10.4597,44.64845],[10.45953,44.64828],[10.45938,44.64816],[10.45922,44.64804],[10.45905,44.64792],[10.45886,44.64781],[10.45849,44.64764],[10.45811,44.64747],[10.45772,44.64729],[10.45413,44.64574],[10.45314,44.64531],[10.4526,44.64507],[10.45123,44.64448],[10.45014,44.64401],[10.45006,44.64397],[10.44906,44.64355],[10.44891,44.64348],[10.44852,44.64331],[10.44727,44.64277],[10.44572,44.6421],[10.44512,44.64182],[10.44461,44.64154],[10.44422,44.64128],[10.44391,44.64105],[10.44324,44.64048],[10.44318,44.64044],[10.44185,44.63926],[10.44138,44.63885],[10.4409,44.63845],[10.44043,44.63814],[10.43853,44.63715],[10.43643,44.63607],[10.43547,44.63559],[10.43399,44.63481],[10.43345,44.63446],[10.43287,44.63398],[10.43281,44.63393],[10.43132,44.63258],[10.42903,44.63048],[10.42715,44.62868],[10.42692,44.62838],[10.42661,44.62788],[10.42607,44.62672],[10.426,44.62659],[10.42593,44.62645],[10.42584,44.62631],[10.42564,44.62607],[10.42554,44.62593],[10.42532,44.62571],[10.42511,44.62555],[10.42506,44.62552],[10.42301,44.62415],[10.42157,44.62319],[10.42118,44.62287],[10.42094,44.62264],[10.42065,44.62234],[10.41906,44.62013],[10.41737,44.61777],[10.41623,44.61619],[10.41593,44.61582],[10.4157,44.61546],[10.41554,44.61507],[10.41519,44.61395],[10.41514,44.61374],[10.41493,44.61303],[10.41483,44.61267],[10.41479,44.61249],[10.41475,44.61231],[10.41474,44.61222],[10.41474,44.61211],[10.41473,44.612],[10.41473,44.61188],[10.41475,44.61165],[10.41479,44.61147],[10.41483,44.61128],[10.41524,44.60992],[10.41528,44.60975],[10.41531,44.60956],[10.41534,44.60936],[10.41533,44.60922],[10.41533,44.60908],[10.4153,44.60892],[10.41527,44.60877],[10.41524,44.60865],[10.41521,44.60853],[10.41521,44.60853],[10.41517,44.60839],[10.41517,44.60839],[10.41465,44.60635],[10.41459,44.60605],[10.41424,44.60472],[10.41416,44.60435],[10.41414,44.6043],[10.41404,44.60392],[10.41399,44.60369],[10.41385,44.60317],[10.41373,44.60266],[10.4136,44.60215],[10.41356,44.60201],[10.41351,44.60187],[10.41346,44.60174],[10.4134,44.6016],[10.41333,44.60149],[10.4133,44.60143],[10.41326,44.60136],[10.41323,44.60131],[10.41319,44.60126],[10.41316,44.60121],[10.41307,44.6011],[10.41302,44.60104],[10.41297,44.60097],[10.41297,44.60097],[10.4121,44.59992],[10.4121,44.59992],[10.41099,44.59857],[10.41009,44.59749],[10.40987,44.59723],[10.40971,44.59703],[10.40945,44.59671],[10.40914,44.59631],[10.4086,44.59558],[10.40841,44.59533],[10.4082,44.59504],[10.40758,44.59421]],"stazioni":[{"nome":"REGGIO EMILIA","tipo":"stazione_capolinea","km":0.0,"lon":10.6433,"lat":44.69767},{"nome":"Reggio Via Fanti","tipo":"fermata","km":1.192,"lon":10.63395,"lat":44.70581},{"nome":"Reggio S. Stefano","tipo":"stazione","km":2.038,"lon":10.62413,"lat":44.70553},{"nome":"Reggio all'Angelo","tipo":"fermata","km":2.91,"lon":10.61341,"lat":44.70439},{"nome":"Cippo km 6,000","tipo":"punto_linea","km":6.0,"lon":10.57592,"lat":44.6974},{"nome":"Codemondo","tipo":"fermata","km":8.311,"lon":10.54755,"lat":44.69419},{"nome":"Cavriago","tipo":"fermata","km":9.782,"lon":10.52982,"lat":44.69825},{"nome":"Cavriago S. Nicol\u00f2","tipo":"fermata","km":10.436,"lon":10.52187,"lat":44.69977},{"nome":"Bivio Barco","tipo":"fermata","km":12.482,"lon":10.49724,"lat":44.69412},{"nome":"Barco","tipo":"stazione","km":13.108,"lon":10.4923,"lat":44.68974},{"nome":"Bibbiano Fossa","tipo":"fermata","km":15.455,"lon":10.47699,"lat":44.67163},{"nome":"Bibbiano","tipo":"fermata","km":16.608,"lon":10.46828,"lat":44.6633},{"nome":"Bibbiano Via Monti","tipo":"fermata","km":17.145,"lon":10.4646,"lat":44.65924},{"nome":"Corniano","tipo":"fermata","km":18.102,"lon":10.46044,"lat":44.65124},{"nome":"Piazzola","tipo":"fermata","km":19.428,"lon":10.44904,"lat":44.64354},{"nome":"S. Polo d'Enza","tipo":"stazione","km":22.451,"lon":10.42305,"lat":44.62417},{"nome":"Ciano Via Tedaldo da Canossa","tipo":"fermata","km":25.017,"lon":10.41375,"lat":44.60276},{"nome":"CIANO D'ENZA","tipo":"stazione_capolinea","km":26.088,"lon":10.40758,"lat":44.59421}],"pl":[{"sigla":"PLA n.38","km":1.259,"lon":10.6334,"lat":44.70627},{"sigla":"PLA n.38","km":1.491,"lon":10.63072,"lat":44.707},{"sigla":"PL n.1","km":1.87,"lon":10.62613,"lat":44.70604},{"sigla":"PL n.1","km":1.998,"lon":10.62461,"lat":44.70564},{"sigla":"PL n.1","km":2.234,"lon":10.62176,"lat":44.70501},{"sigla":"PL n.2","km":2.374,"lon":10.62003,"lat":44.70478},{"sigla":"PL n.2","km":2.419,"lon":10.61946,"lat":44.70481},{"sigla":"PLA n.4","km":2.867,"lon":10.61389,"lat":44.70457},{"sigla":"PLA n.18","km":3.204,"lon":10.61014,"lat":44.70312},{"sigla":"PLA n.18","km":4.459,"lon":10.59497,"lat":44.69981},{"sigla":"PLA n.18","km":5.545,"lon":10.58164,"lat":44.69778},{"sigla":"PLA n.21","km":6.62,"lon":10.56846,"lat":44.69567},{"sigla":"PLA n.21","km":7.918,"lon":10.55248,"lat":44.69382},{"sigla":"PLA n.28","km":10.424,"lon":10.52202,"lat":44.69978},{"sigla":"PLA n.28","km":10.873,"lon":10.51653,"lat":44.69874},{"sigla":"PL n.33","km":12.428,"lon":10.49784,"lat":44.69437},{"sigla":"PL n.34","km":12.923,"lon":10.49367,"lat":44.69109},{"sigla":"PL n.34","km":13.701,"lon":10.4881,"lat":44.68532},{"sigla":"PLA n.28","km":14.239,"lon":10.48507,"lat":44.68098},{"sigla":"PLA n.28","km":15.169,"lon":10.47882,"lat":44.67386},{"sigla":"PLA n.50","km":16.443,"lon":10.46958,"lat":44.66446},{"sigla":"PLA n.50","km":17.088,"lon":10.4649,"lat":44.65971},{"sigla":"PLA n.53","km":17.52,"lon":10.46256,"lat":44.65619},{"sigla":"PLA n.53","km":18.068,"lon":10.46046,"lat":44.65154},{"sigla":"PLA n.53","km":18.563,"lon":10.45839,"lat":44.64759},{"sigla":"PLA n.53","km":19.581,"lon":10.44739,"lat":44.64282},{"sigla":"PLA n.53","km":20.678,"lon":10.43702,"lat":44.63637},{"sigla":"PLA n.53","km":21.248,"lon":10.43172,"lat":44.63294},{"sigla":"PLA n.53","km":22.23,"lon":10.42509,"lat":44.62554},{"sigla":"PLA n.53","km":22.384,"lon":10.42367,"lat":44.62459},{"sigla":"PLA n.53","km":22.808,"lon":10.4202,"lat":44.62171},{"sigla":"PLA n.38","km":23.939,"lon":10.41476,"lat":44.61235},{"sigla":"PLA n.53","km":24.373,"lon":10.4152,"lat":44.60848},{"sigla":"PLA n.53","km":24.776,"lon":10.41429,"lat":44.6049}],"singolari":[{"nome":"Inizio rampa ponte Via Franchetti","tipo":"ponte","km":15.51,"lon":10.47663,"lat":44.67121},{"nome":"Culmine Ponte Via Franchetti","tipo":"ponte","km":16.015,"lon":10.47294,"lat":44.66749},{"nome":"Fine rampa ponte Via Franchetti","tipo":"ponte","km":16.232,"lon":10.47124,"lat":44.66596},{"nome":"Portali TE di linea","tipo":"portale_te","km":20.777,"lon":10.436,"lat":44.63585},{"nome":"Ponte SP 513 R (arcate) - divieto sporgersi","tipo":"ponte","km":25.39,"lon":10.41192,"lat":44.5997}]};
+
+// ============ Cesium bootstrap ============
+// No Ion token required: we use OpenStreetMap raster imagery + Cesium's default
+// ellipsoid terrain provider (no Ion World Terrain, to avoid needing an access token).
+// If you have a Cesium Ion token, set Cesium.Ion.defaultAccessToken = "YOUR_TOKEN"
+// and swap terrainProvider below for Cesium.createWorldTerrain() to get real elevation.
+
+Cesium.Ion.defaultAccessToken = undefined; // explicit: not using Ion services
+
+// Build the viewer with NO imagery/base layer yet (avoids relying on the
+// constructor's imageryProvider option, which behaves inconsistently across
+// Cesium versions), then add the OpenStreetMap raster layer explicitly via
+// UrlTemplateImageryProvider — this is the most version-stable way to get
+// OSM tiles on screen without a Cesium Ion account/token.
+const viewer = new Cesium.Viewer('cesiumContainer', {
+  baseLayer: false,
+  terrainProvider: new Cesium.EllipsoidTerrainProvider(), // flat WGS84 ellipsoid (no elevation data / no Ion needed)
+  baseLayerPicker: false,
+  geocoder: false,
+  homeButton: false,
+  sceneModePicker: true,
+  navigationHelpButton: false,
+  animation: false,
+  timeline: false,
+  fullscreenButton: true,
+  selectionIndicator: false,
+  infoBox: false,
+});
+
+// CARTO's "voyager" basemap (built on OSM data, served via a subdomain-sharded
+// CDN meant for exactly this kind of embedding — more reliable here than
+// hitting tile.openstreetmap.org directly, which throttles/blocks unrecognized
+// third-party apps without a registered User-Agent).
+const osmLayer = viewer.imageryLayers.addImageryProvider(
+  new Cesium.UrlTemplateImageryProvider({
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c', 'd'],
+    credit: '© OpenStreetMap contributors © CARTO',
+    maximumLevel: 19
+  })
+);
+
+document.getElementById('loading').style.display = 'none';
+
+// ============ Track polyline ============
+const trackPositions = Cesium.Cartesian3.fromDegreesArray(
+  DATA.track.flatMap(p => [p[0], p[1]])
+);
+
+viewer.entities.add({
+  polyline: {
+    positions: trackPositions,
+    width: 4,
+    material: new Cesium.PolylineOutlineMaterialProperty({
+      color: Cesium.Color.fromCssColorString('#c8801e'),
+      outlineWidth: 1,
+      outlineColor: Cesium.Color.BLACK.withAlpha(0.4)
+    }),
+    clampToGround: true
+  }
+});
+
+// ============ Stations, level crossings, singular points ============
+DATA.stazioni.forEach(s => {
+  const capolinea = s.tipo.includes('capolinea');
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(s.lon, s.lat),
+    point: {
+      pixelSize: capolinea ? 14 : 9,
+      color: Cesium.Color.fromCssColorString('#1f8a52'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    },
+    label: {
+      text: s.nome,
+      font: capolinea ? 'bold 14px sans-serif' : '12px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -12),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 20000)
+    }
+  });
+});
+
+DATA.pl.forEach(p => {
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat),
+    point: {
+      pixelSize: 6,
+      color: Cesium.Color.fromCssColorString('#c23b2f'),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    }
+  });
+});
+
+DATA.singolari.forEach(p => {
+  viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat),
+    point: {
+      pixelSize: 8,
+      color: Cesium.Color.fromCssColorString('#e0993a'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 1,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    },
+    label: {
+      text: p.nome,
+      font: '11px sans-serif',
+      fillColor: Cesium.Color.fromCssColorString('#f0b968'),
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.TOP,
+      pixelOffset: new Cesium.Cartesian2(0, 10),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 8000)
+    }
+  });
+});
+
+// ============ cumulative distance along track (haversine) ============
+function haversine(lon1, lat1, lon2, lat2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const track = DATA.track;
+let cum = [0];
+for (let i = 1; i < track.length; i++) {
+  cum.push(cum[i-1] + haversine(track[i-1][0], track[i-1][1], track[i][0], track[i][1]));
+}
+const totalLenM = cum[cum.length - 1];
+const totalKm = DATA.stazioni[DATA.stazioni.length - 1].km;
+
+function pointAtKm(km) {
+  const targetM = (km / totalKm) * totalLenM;
+  let lo = 0, hi = cum.length - 1;
+  if (targetM <= 0) return track[0];
+  if (targetM >= totalLenM) return track[track.length - 1];
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] < targetM) lo = mid; else hi = mid;
+  }
+  const segLen = cum[hi] - cum[lo];
+  const t = segLen > 0 ? (targetM - cum[lo]) / segLen : 0;
+  return [
+    track[lo][0] + (track[hi][0] - track[lo][0]) * t,
+    track[lo][1] + (track[hi][1] - track[lo][1]) * t
+  ];
+}
+
+// ============ animated train entity ============
+let currentKm = 0;
+let direction = 1;
+let speedKmh = 60;
+const TIME_ACCEL = 90;
+
+const trainEntity = viewer.entities.add({
+  position: Cesium.Cartesian3.fromDegrees(track[0][0], track[0][1], 15),
+  point: {
+    pixelSize: 16,
+    color: Cesium.Color.fromCssColorString('#e0993a'),
+    outlineColor: Cesium.Color.WHITE,
+    outlineWidth: 2,
+    heightReference: Cesium.HeightReference.NONE,
+    disableDepthTestDistance: Number.POSITIVE_INFINITY
+  },
+  label: {
+    text: '🚆',
+    font: '24px sans-serif',
+    verticalOrigin: Cesium.VerticalOrigin.CENTER,
+    horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+    pixelOffset: new Cesium.Cartesian2(0, -2),
+    disableDepthTestDistance: Number.POSITIVE_INFINITY
+  }
+});
+
+const events = DATA.stazioni;
+function updateNext() {
+  let next;
+  if (direction > 0) {
+    next = events.find(e => e.km > currentKm + 0.0005) || events[events.length - 1];
+  } else {
+    next = [...events].reverse().find(e => e.km < currentKm - 0.0005) || events[0];
+  }
+  document.getElementById('nextVal').textContent =
+    next.nome + ' (' + Math.abs(next.km - currentKm).toFixed(2).replace('.', ',') + ' km)';
+}
+
+let lastTime = null;
+let following = false;
+
+viewer.clock.onTick.addEventListener(() => {
+  const now = performance.now();
+  if (lastTime === null) { lastTime = now; return; }
+  const dtH = (now - lastTime) / 1000 / 3600;
+  lastTime = now;
+
+  currentKm += speedKmh * dtH * TIME_ACCEL * direction;
+  if (currentKm >= totalKm) { currentKm = totalKm; direction = -1; }
+  else if (currentKm <= 0) { currentKm = 0; direction = 1; }
+
+  const [lon, lat] = pointAtKm(currentKm);
+  const pos = Cesium.Cartesian3.fromDegrees(lon, lat, 15);
+  trainEntity.position = pos;
+
+  document.getElementById('kmVal').textContent = currentKm.toFixed(3).replace('.', ',') + ' km';
+  updateNext();
+
+  if (following) {
+    viewer.camera.lookAt(
+      pos,
+      new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-30), 900)
+    );
+  }
+});
+
+// ============ controls ============
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speedKmh = parseFloat(e.target.value);
+  document.getElementById('speedLabel').textContent = speedKmh + ' km/h';
+  document.getElementById('spVal').textContent = speedKmh + ' km/h';
+});
+
+document.getElementById('followBtn').addEventListener('click', () => {
+  following = !following;
+  document.getElementById('followBtn').textContent = following ? 'Vista libera' : 'Segui treno';
+  if (!following) {
+    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+  }
+});
+
+// ============ initial camera: fly to whole line ============
+viewer.camera.flyTo({
+  destination: Cesium.Cartesian3.fromDegrees(
+    (Math.min(...track.map(p=>p[0])) + Math.max(...track.map(p=>p[0]))) / 2,
+    (Math.min(...track.map(p=>p[1])) + Math.max(...track.map(p=>p[1]))) / 2,
+    18000
+  ),
+  orientation: { pitch: Cesium.Math.toRadians(-55) }
+});
+</script>
+</body>
+</html>
