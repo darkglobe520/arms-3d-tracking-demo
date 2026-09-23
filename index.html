@@ -90,6 +90,7 @@ Cesium.Ion.defaultAccessToken = undefined; // explicit: not using Ion services
 // UrlTemplateImageryProvider — this is the most version-stable way to get
 // OSM tiles on screen without a Cesium Ion account/token.
 const viewer = new Cesium.Viewer('cesiumContainer', {
+  imageryProvider: false, // suppress Cesium's default Ion World Imagery (needs a token) — we add our own layer below
   baseLayer: false,
   terrainProvider: new Cesium.EllipsoidTerrainProvider(), // flat WGS84 ellipsoid (no elevation data / no Ion needed)
   baseLayerPicker: false,
