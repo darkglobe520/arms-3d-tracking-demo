@@ -105,15 +105,15 @@ const viewer = new Cesium.Viewer('cesiumContainer', {
   infoBox: false,
 });
 
-// CARTO's "voyager" basemap (built on OSM data, served via a subdomain-sharded
-// CDN meant for exactly this kind of embedding — more reliable here than
-// hitting tile.openstreetmap.org directly, which throttles/blocks unrecognized
-// third-party apps without a registered User-Agent).
+// OpenStreetMap's own tile servers — free, no account/API key required,
+// no watermark. Confirmed working once the Cesium base-layer setup above
+// was fixed (the earlier "API KEY REQUIRED" watermark came from CARTO's
+// free basemap tier, not from OSM or from a Cesium/Ion problem).
 const osmLayer = viewer.imageryLayers.addImageryProvider(
   new Cesium.UrlTemplateImageryProvider({
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-    subdomains: ['a', 'b', 'c', 'd'],
-    credit: '© OpenStreetMap contributors © CARTO',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+    credit: '© OpenStreetMap contributors',
     maximumLevel: 19
   })
 );
